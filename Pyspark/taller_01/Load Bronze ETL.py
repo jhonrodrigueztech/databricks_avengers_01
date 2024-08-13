@@ -72,6 +72,10 @@ from pyspark.sql.functions import *
 
 # COMMAND ----------
 
+from cryptography.fernet import Fernet
+
+key = "95oBoGsSAkJNlCd5quoZvZCdTjAVORFUGDhLk2cSNXU="
+
 dfCypher = (
         dfMongoDBAccounts.withColumn("cardNumber" , encrypt("cardNumber" , lit(key)) )
             .withColumn("dni" , encrypt("dni" , lit(key)) )
