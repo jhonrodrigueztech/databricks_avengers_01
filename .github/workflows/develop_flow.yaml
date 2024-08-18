@@ -1,0 +1,43 @@
+name: Develop Flow
+
+# Trigger this workflow manually with the workflow_dispatch event
+on:
+  workflow_dispatch:
+    inputs:
+      destination:
+        description: 'Destination'
+        required: true
+        type: string
+
+run-name: Deploy to Develop Databricks at destination ${{ inputs.destination }} by @${{ github.actor }}
+
+jobs:
+  validate_deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: develop
+    if: github.ref == 'refs/heads/develop'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+      - name: Prepare Databricks CLI 
+        uses: databricks/setup-cli@main
+      - name: Set Version
+        run: |
+          echo "VERSION=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+      - name: connect databricks
+        env:
+          DATABRICKS_HOST: https://adb-3590073163084620.0.azuredatabricks.net/
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: |
+          databricks configure
+      - name: Run Databricks bundle validate 
+        working-directory: ./${{ inputs.destination }}
+        run: |
+          databricks bundle validate --var release=${{ env.VERSION }} -t develop
+      - name: Run Databricks bundle deploy 
+        working-directory: ./${{ inputs.destination }}
+        run: |
+          databricks bundle deploy --var release=${{ env.VERSION }} -t develop
