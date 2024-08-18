@@ -11,10 +11,6 @@ on:
         required: true
         type: string
 
-env:
-  ROOT_PATH: '${{ github.workspace }}'
-  BRANCH_NAME: '${{ github.head_ref || github.ref_name }}'
-
 run-name: Deploy to production Databricks at destination ${{ inputs.destination }} by @${{ github.actor }}
 
 env:
