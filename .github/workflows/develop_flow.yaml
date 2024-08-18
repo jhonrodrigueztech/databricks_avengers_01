@@ -29,7 +29,7 @@ jobs:
           echo "VERSION=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
       - name: connect databricks
         env:
-          DATABRICKS_HOST: https://adb-3590073163084620.0.azuredatabricks.net/
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
         run: |
           databricks configure

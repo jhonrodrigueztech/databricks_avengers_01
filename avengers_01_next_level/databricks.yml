@@ -6,6 +6,13 @@ bundle:
 include:
   - resources/*.yml
 
+sync:
+  exclude:
+    - scratch/
+    - fixtures/
+    - .vscode/
+    - .gitignore
+
 variables:
   release:
     description: string
@@ -22,9 +29,14 @@ targets:
     mode: production
     workspace:
       host: https://adb-3590073163084620.0.azuredatabricks.net
-      root_path: /Users/${workspace.current_user.userName}/bundles/root/${bundle.name}/
-      file_path: /Users/${workspace.current_user.userName}/bundles/file/${bundle.name}/
-      artifact_path: /Users/${workspace.current_user.userName}/bundles/artifacts/${bundle.name}/
+
+      #just put state's files
+      root_path: /Bundles/State/root/${bundle.name}/
+      
+      #just put the whole exited files      
+      file_path: /Src/Code/file/${bundle.name}/
+
+      artifact_path: /Src/Code/artifacts/${bundle.name}/
     run_as:
         user_name: jhonrodrigueztech_gmail.com#ext#@jhonrodrigueztechgmail.onmicrosoft.com
 
