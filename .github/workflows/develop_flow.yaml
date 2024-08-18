@@ -32,11 +32,11 @@ jobs:
       #   with:
       #     creds: ${{ env.AZURE_CREDENTIALS }}
       - name: connect databricks
-          env:
-            DATABRICKS_HOST: https://adb-3590073163084620.0.azuredatabricks.net/
-            DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-          run: |
-            databricks configure
+        env:
+          DATABRICKS_HOST: https://adb-3590073163084620.0.azuredatabricks.net/
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: |
+          databricks configure
       - name: Run Databricks bundle validate 
         working-directory: ./${{ inputs.destination }}
         run: |
