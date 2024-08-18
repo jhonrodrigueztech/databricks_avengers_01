@@ -40,8 +40,6 @@ jobs:
       #     creds: ${{ env.AZURE_CREDENTIALS }}
       - name: connect databricks
           env:
-            # DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
-            # DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
             DATABRICKS_HOST: https://adb-3590073163084620.0.azuredatabricks.net/
             DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
           run: |
