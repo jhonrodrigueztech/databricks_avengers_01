@@ -27,10 +27,6 @@ jobs:
       - name: Set Version
         run: |
           echo "VERSION=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-      # - name: Log in azure
-      #   uses: azure/login@v2
-      #   with:
-      #     creds: ${{ env.AZURE_CREDENTIALS }}
       - name: connect databricks
         env:
           DATABRICKS_HOST: https://adb-3590073163084620.0.azuredatabricks.net/
