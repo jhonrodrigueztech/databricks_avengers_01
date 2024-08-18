@@ -6,6 +6,11 @@ bundle:
 include:
   - resources/*.yml
 
+variables:
+  release:
+    description: string
+    default: '1.0.0'
+
 targets:
   # The 'dev' target, for development purposes. This target is the default.
   local:
