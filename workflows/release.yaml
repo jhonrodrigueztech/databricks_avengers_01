@@ -1,0 +1,251 @@
+---
+name: Release Flow
+
+# Trigger this workflow whenever a pull request is opened against the repo's
+# main branch or an existing pull request's head branch is updated.
+on:
+  workflow_dispatch:
+    inputs:
+      releaseCandidateVersion:
+        description: 'Name of version (ie 5.5.0-rc.0)'
+        required: true
+      domain:
+        description: 'Domain'
+        required: true
+        type: choice
+        options:
+          - bcp
+          - core
+          - culture
+          - datahub
+          - design
+          - experience
+          - insurance
+          - lending
+          - marketing
+          - payments
+          - planning
+          - retail
+          - technology
+      subdomain:
+        description: 'Subdomain'
+        required: true
+        type: string
+      destination:
+        description: 'Destination'
+        required: true
+        type: string
+      type:
+        description: 'Define the type of deploy' # This input is used only for group concurrency, does not define what type it is deploying
+        required: true
+        type: choice
+        options:
+          - all
+          - bronze
+          - silver
+          - gold
+          - reverse
+
+# Ensures that only one deploy task per branch/environment will run at a time.
+concurrency:
+  group: action-${{ github.workflow }}-${{ inputs.domain }}-${{ inputs.subdomain }}-${{ inputs.destination }}-${{ inputs.type }}
+  cancel-in-progress: true
+
+run-name: Deploy Release to Databricks at domain ${{ inputs.domain }} subdomain ${{ inputs.subdomain }} destination ${{ inputs.destination }} by @${{ github.actor }}
+
+jobs:
+  validate_deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: stg
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Prepare Databricks CLI 
+        uses: databricks/setup-cli@main
+      - name: Log in azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS_STG }}
+      - name: Install OpenVPN
+        run: |
+          sudo apt update
+          sudo apt --assume-yes --no-install-recommends install openvpn openvpn-systemd-resolved
+      - name: Setup VPN config
+        working-directory: ./
+        run: |
+          echo "${{ secrets.VPN_CA_CRT_STG }}" > ca.crt
+          echo "${{ secrets.VPN_USER_CRT_STG }}" > user.crt
+          echo "${{ secrets.VPN_USER_KEY_STG }}" > user.key
+          echo "${{ secrets.VPN_SECRET_USERNAME_PASSWORD_STG }}" > secret.txt
+          echo "${{ secrets.VPN_TLS_KEY_STG }}" > tls.key
+      - name: Connect VPN
+        working-directory: ./
+        timeout-minutes: 10
+        run: |
+          IP=$(curl -s https://ifconfig.me/ | cut -d "." -f1,2,3);
+          IP_NEW=$(curl -s https://ifconfig.me/ | cut -d "." -f1,2,3);
+          sudo openvpn --config ".github/vpn/tools_techtools@yape.com.pe_AccessTools.ovpn" --log "vpn.log" \
+           --setenv UV_NAME 'action-${{ github.repository }}-${{ github.ref }}' \
+           --remote ${{ secrets.VPN_HOST_IP_STG }} --daemon
+           while [[ "$IP" == "$IP_NEW" ]]; do IP_NEW=$(curl -s https://ifconfig.me/ | cut -d "." -f1,2,3); sleep 2; echo "IPS $IP - $IP_NEW"; done; echo "Done";
+           sudo resolvectl domain tun0 ${{ vars.YAPE_VPN_RESOLVECTL_STG }}
+      - name: Run Databricks bundle validate 
+        working-directory: ./${{ inputs.domain }}/${{ inputs.subdomain }}/${{ inputs.destination }}
+        run: |
+          databricks bundle validate --var release=${{ inputs.releaseCandidateVersion }} -t stg
+        env:
+          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS_STG }}
+          AZURE_SP_APPLICATION_ID: ${{ secrets.ARM_CLIENT_ID }}
+          AZURE_SP_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          AZURE_SP_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          DATABRICKS_BUNDLE_ENV: stg
+      - name: Run Databricks bundle deploy 
+        working-directory: ./${{ inputs.domain }}/${{ inputs.subdomain }}/${{ inputs.destination }}
+        run: |
+          databricks bundle deploy --var release=${{ inputs.releaseCandidateVersion }} -t stg
+        env:
+          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS_STG }}
+          AZURE_SP_APPLICATION_ID: ${{ secrets.ARM_CLIENT_ID }}
+          AZURE_SP_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          AZURE_SP_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          DATABRICKS_BUNDLE_ENV: stg
+      - name: Slack Failed Notification
+        uses: someimportantcompany/github-actions-slack-message@v1
+        if: failure()
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          channel: deploys
+          text: "${{ env.ENVIRONMENT_NAME }} GitHub Action: Build failed in step ${{github.job}}"
+          color: failure
+  get_last_tag:
+    uses: yaperos/reusable-workflows/.github/workflows/last_tag.yaml@main
+    needs: [validate_deploy]
+    with:
+      tag: ${{ inputs.releaseCandidateVersion }}
+      message: ${{ inputs.releaseCandidateVersion }}
+      slack_channel: mobile-deploys
+    secrets: inherit
+  generate_pre_release:
+    uses: yaperos/reusable-workflows/.github/workflows/generate_release.yaml@main
+    needs: [get_last_tag]
+    with:
+      environment: stg
+      releaseCandidateVersion: ${{ inputs.releaseCandidateVersion }}
+      base_ref: ${{ needs.get_last_tag.outputs.stg_last_version }}
+      slack_channel: mobile-deploys
+    secrets: inherit
+
+  promote_prd:
+    uses: yaperos/reusable-workflows/.github/workflows/approve.yaml@main
+    needs: [generate_pre_release]
+    with:
+      environment: promotePRD
+      slack_channel: deploys_prd
+    secrets: inherit
+  
+  generate_release:
+    uses: yaperos/reusable-workflows/.github/workflows/generate_release.yaml@main
+    needs: [promote_prd]
+    with:
+      environment: prd
+      releaseCandidateVersion: ${{ inputs.releaseCandidateVersion }}
+      base_ref: ${{ needs.get_last_tag.outputs.stg_last_version }}
+      slack_channel: mobile-deploys
+    secrets: inherit
+
+  validate_deploy_prd:
+    runs-on: ubuntu-latest
+    needs: [generate_release]
+    outputs:
+      new_release_id: ${{ needs.generate_release.outputs.new_release_id }}
+    environment:
+      name: prd
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Prepare Databricks CLI 
+        uses: databricks/setup-cli@main
+      - name: Log in azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS_PRD }}
+      - name: Bump version
+        run: |
+          echo "VERSION=$( echo ${{ inputs.releaseCandidateVersion }} |awk -F'-' '{ print $1 }')" >> $GITHUB_ENV
+      - name: Install OpenVPN
+        run: |
+          sudo apt update
+          sudo apt --assume-yes --no-install-recommends install openvpn openvpn-systemd-resolved
+      - name: Setup VPN config
+        working-directory: ./
+        run: |
+          echo "${{ secrets.VPN_CA_CRT_PRD }}" > ca.crt
+          echo "${{ secrets.VPN_USER_CRT_PRD }}" > user.crt
+          echo "${{ secrets.VPN_USER_KEY_PRD }}" > user.key
+          echo "${{ secrets.VPN_SECRET_USERNAME_PASSWORD_PRD }}" > secret.txt
+          echo "${{ secrets.VPN_TLS_KEY_PRD }}" > tls.key
+      - name: Connect VPN
+        working-directory: ./
+        timeout-minutes: 10
+        run: |
+          IP=$(curl -s https://ifconfig.me/ | cut -d "." -f1,2,3);
+          IP_NEW=$(curl -s https://ifconfig.me/ | cut -d "." -f1,2,3);
+          sudo openvpn --config ".github/vpn/tools_techtools@yape.com.pe_AccessTools.ovpn" --log "vpn.log" \
+           --setenv UV_NAME 'action-${{ github.repository }}-${{ github.ref }}' \
+           --remote ${{ secrets.VPN_HOST_IP_PRD }} --daemon
+           while [[ "$IP" == "$IP_NEW" ]]; do IP_NEW=$(curl -s https://ifconfig.me/ | cut -d "." -f1,2,3); sleep 2; echo "IPS $IP - $IP_NEW"; done; echo "Done";
+           sudo resolvectl domain tun0 ${{ vars.YAPE_VPN_RESOLVECTL_PRD }}
+      - name: Run Databricks bundle validate 
+        working-directory: ./${{ inputs.domain }}/${{ inputs.subdomain }}/${{ inputs.destination }}
+        run: |
+          databricks bundle validate --var release=${{ env.VERSION }}
+        env:
+          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS_PRD }}
+          AZURE_SP_APPLICATION_ID: ${{ secrets.ARM_CLIENT_ID }}
+          AZURE_SP_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          AZURE_SP_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          DATABRICKS_BUNDLE_ENV: prd
+      - name: Run Databricks bundle deploy 
+        working-directory: ./${{ inputs.domain }}/${{ inputs.subdomain }}/${{ inputs.destination }}
+        run: |
+          databricks bundle deploy --var release=${{ env.VERSION }} -t prd
+        env:
+          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS_PRD }}
+          AZURE_SP_APPLICATION_ID: ${{ secrets.ARM_CLIENT_ID }}
+          AZURE_SP_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          AZURE_SP_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          DATABRICKS_BUNDLE_ENV: prd
+      - name: Slack Failed Notification
+        uses: someimportantcompany/github-actions-slack-message@v1
+        if: failure()
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          channel: deploys
+          text: "${{ env.ENVIRONMENT_NAME }} GitHub Action: Build failed in step ${{github.job}}"
+          color: failure
+
+  delete_release_on_failure:
+    runs-on: ubuntu-latest
+    needs: validate_deploy_prd 
+    if: failure()
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Delete Release
+        run: |
+          echo "Deleting from API"          
+          response=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/${{ github.repository }}/releases/${{ needs.validate_deploy_prd.outputs.new_release_id }})
+          if [ "$response" -eq 204 ]; then
+            echo "Release deleted successfully."
+          else
+            echo "Failed to delete release. HTTP status code: $response"
+            exit 1
+          fi
+          
+      - name: Delete Tag release       
+        run: |
+          git tag -d ${{ inputs.releaseCandidateVersion }}
+          git push origin --delete ${{ inputs.releaseCandidateVersion }}        

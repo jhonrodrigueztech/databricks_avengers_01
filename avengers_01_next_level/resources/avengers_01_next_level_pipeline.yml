@@ -1,0 +1,12 @@
+# The main pipeline for avengers_01_next_level
+resources:
+  pipelines:
+    avengers_01_next_level_pipeline:
+      name: avengers_01_next_level_pipeline
+      target: avengers_01_next_level_${bundle.environment}
+      libraries:
+        - notebook:
+            path: ../src/dlt_pipeline.ipynb
+
+      configuration:
+        bundle.sourcePath: /Workspace/${workspace.file_path}/src
