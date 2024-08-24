@@ -27,7 +27,7 @@ from pyspark.sql.functions import *
 dfNuevo = (
         dataframe
             .select( "names" , "department", "salary" )
-            # .where( col("department") == "Sales" )
+        #     .where( col("department") == "Sales" )
             .withColumn("department" , coalesce( col("department") , lit("Tech") )  )
             .withColumn("nueva_column" ,lit( "Default"))
             .withColumn("increase_salary" ,
@@ -36,6 +36,7 @@ dfNuevo = (
                          . when ( col("department") == "Business"  , col ("salary") * 0.08  )
                             .otherwise(lit(0))
                          )
+            
 #  col("department") == "Tech" col ("salary ") * 0.15
         )
 
