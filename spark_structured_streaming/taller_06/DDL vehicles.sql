@@ -1,4 +1,8 @@
 -- Databricks notebook source
+truncate table dtw_avengers_lakehouse.bronze_dev.vehicles_bronze
+
+-- COMMAND ----------
+
 select * from dtw_avengers_lakehouse.bronze_dev.vehicles_bronze
 
 -- COMMAND ----------
@@ -8,7 +12,7 @@ create or replace table  dtw_avengers_lakehouse.bronze_dev.vehicles_bronze (id s
 
 -- COMMAND ----------
 
-INSERT INTO  dtw_avengers_lakehouse.bronze_dev.vehicles_bronze VALUES ('DMP-3', "New Driver INN" , "red" , 7 , current_timestamp())
+INSERT INTO  dtw_avengers_lakehouse.bronze_dev.vehicles_bronze VALUES ('DMP-3', "Driver 3" , "white" , 7 , current_timestamp())
 
 -- COMMAND ----------
 
